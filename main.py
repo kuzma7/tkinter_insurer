@@ -2,6 +2,9 @@ import sqlite3
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.dates as mdates
 
 
 # Подключение к базе данных SQLite
@@ -324,15 +327,169 @@ def view_contract_details(event):
                                                                                sticky="w")
 
 
+import csv
+
+
+# Функция для создания отчета по сотруднику (с учетом только сотрудников с договорами)
+def generate_employee_report():
+    # Окно для выбора сотрудника
+    report_window = tk.Toplevel(root)
+    report_window.title("Отчет по сотруднику")
+    report_window.geometry("400x200")
+
+    tk.Label(report_window, text="Выберите сотрудника:", font=("Arial", 12)).pack(pady=10)
+
+    # Выпадающий список с ФИО сотрудников, у которых есть заключенные договоры
+    conn = connect_db()
+    cursor = conn.cursor()
+    query = """
+        SELECT DISTINCT 
+            Сотрудник.id_сотрудника, 
+            Сотрудник.Имя_сотрудника
+        FROM Договор
+        INNER JOIN Сотрудник ON Договор.id_сотрудника = Сотрудник.id_сотрудника
+    """
+    cursor.execute(query)
+    employees = cursor.fetchall()
+    conn.close()
+
+    if not employees:
+        tk.messagebox.showinfo("Информация", "Нет сотрудников с заключенными договорами.")
+        report_window.destroy()
+        return
+
+    employee_var = tk.StringVar()
+    employee_dropdown = ttk.Combobox(report_window, textvariable=employee_var, state="readonly", width=30)
+    employee_dropdown['values'] = [f"{emp[1]} (ID: {emp[0]})" for emp in employees]
+    employee_dropdown.pack(pady=10)
+
+    # Функция для генерации CSV отчета
+    def create_report():
+        selected = employee_var.get()
+        if not selected:
+            tk.messagebox.showwarning("Ошибка", "Выберите сотрудника из списка!")
+            return
+
+        employee_id = int(selected.split("ID: ")[1][:-1])  # Извлечение ID сотрудника
+        employee_name = selected.split(" (")[0]  # Имя сотрудника
+
+        # Запрос на выборку данных о договорах, заключенных сотрудником
+        conn = connect_db()
+        cursor = conn.cursor()
+        query = """
+            SELECT 
+                Договор.id_договора,
+                Страхователь.Имя_страхователя,
+                Договор.Дата_заключения,
+                Договор.Сумма_страховой_премии
+            FROM Договор
+            LEFT JOIN Страхователь ON Договор.id_страхователя = Страхователь.id_страхователя
+            WHERE Договор.id_сотрудника = ?
+        """
+        cursor.execute(query, (employee_id,))
+        contracts = cursor.fetchall()
+        conn.close()
+
+        # Проверка, есть ли данные для отчета
+        if not contracts:
+            tk.messagebox.showinfo("Информация", f"У сотрудника {employee_name} нет заключенных договоров.")
+            return
+
+        # Генерация CSV файла
+        filename = f"{employee_name}_отчет.csv"
+        with open(filename, mode="w", newline="", encoding="utf-8") as file:
+            writer = csv.writer(file)
+            writer.writerow(["ID договора", "Имя страхователя", "Дата заключения", "Сумма премии"])
+            writer.writerows(contracts)
+
+        tk.messagebox.showinfo("Успех", f"Отчет сохранен как {filename}")
+
+    # Кнопка для генерации отчета
+    tk.Button(report_window, text="Сгенерировать", command=create_report, font=("Arial", 12), bg="lightblue").pack(
+        pady=20)
+
+
+# Функция для отображения статистики и графика
+def show_statistics():
+    # Окно для отображения статистики
+    stats_window = tk.Toplevel(root)
+    stats_window.title("Статистика по договорам")
+    stats_window.geometry("800x600")
+
+    # Подключение к базе данных
+    conn = connect_db()
+    cursor = conn.cursor()
+
+    # Запросы для статистики
+    cursor.execute("SELECT COUNT(*) FROM Договор")
+    total_contracts = cursor.fetchone()[0]
+
+    cursor.execute("SELECT SUM(Сумма_страховой_премии) FROM Договор")
+    total_premium = cursor.fetchone()[0]
+
+    cursor.execute("""
+        SELECT strftime('%Y-%m', Дата_заключения) AS month, COUNT(*) 
+        FROM Договор 
+        GROUP BY month 
+        ORDER BY month
+    """)
+    contracts_by_month = cursor.fetchall()
+    conn.close()
+
+    # Показать общее количество договоров
+    tk.Label(stats_window, text=f"Общее количество договоров: {total_contracts}", font=("Arial", 12)).pack(pady=10)
+
+    # Показать общую сумму страховых премий
+    total_premium_display = total_premium if total_premium else 0
+    tk.Label(stats_window, text=f"Общая сумма страховых премий: {total_premium_display:.2f} руб.",
+             font=("Arial", 12)).pack(pady=10)
+
+    # Построение графика
+    if contracts_by_month:
+        months = [row[0] for row in contracts_by_month]
+        counts = [row[1] for row in contracts_by_month]
+
+        # Преобразуем даты в месяц и год
+        months = [mdates.datestr2num(month + '-01') for month in months]
+
+        # Построение графика с использованием Matplotlib
+        fig, ax = plt.subplots(figsize=(8, 6))
+
+        # Используем plot вместо plot_date
+        ax.plot(months, counts, marker='o', linestyle='-', color='blue')
+
+        # Форматирование оси X для отображения месяцев
+        ax.xaxis.set_major_locator(mdates.MonthLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%B %Y'))
+        ax.xaxis.set_minor_locator(mdates.MonthLocator())
+        ax.set_title("Количество заключенных договоров по месяцам")
+        ax.set_xlabel("Месяц")
+        ax.set_ylabel("Количество договоров")
+        ax.grid()
+
+        plt.xticks(rotation=45, ha="right")
+        plt.tight_layout()
+
+        # Встраивание графика в окно
+        canvas = FigureCanvasTkAgg(fig, master=stats_window)
+        canvas.draw()
+        canvas.get_tk_widget().pack(pady=20)
+
+    else:
+        tk.Label(stats_window, text="Нет данных для отображения графика.", font=("Arial", 12)).pack(pady=20)
+
+
 # Основное окно
 root = tk.Tk()
 root.title("Автоматизированная система учета договоров страхования")
-root.geometry("800x600")  # Увеличим размер окна для удобства
+root.geometry("1100x600")  # Увеличим размер окна для удобства
 
 # Кнопки для выполнения операций
 tk.Button(root, text="Добавить договор", command=add_contract).pack(pady=10)
 tk.Button(root, text="Обновить договор", command=update_contract).pack(pady=10)
 tk.Button(root, text="Удалить договор", command=delete_contract).pack(pady=10)
+tk.Button(root, text="Отчет по сотруднику", command=generate_employee_report).pack(pady=10)
+tk.Button(root, text="Статистика по договорам", command=show_statistics).pack(pady=10)
 
 
 # Функция выборки данных с ФИО сотрудника
