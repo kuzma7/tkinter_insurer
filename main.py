@@ -1,16 +1,11 @@
-import sqlite3
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.dates as mdates
-
-
-# Подключение к базе данных SQLite
-def connect_db():
-    conn = sqlite3.connect('data_base.db')  # Имя базы данных
-    return conn
+from department_report import generate_department_report
+from db_connection import connect_db
 
 
 # Функция для выполнения SQL запроса
@@ -223,29 +218,41 @@ def view_insurer_details(insurer_id):
         ttk.Label(frame, text="Страхователь не найден.", font=("Arial", 12, "italic")).grid(row=0, column=0)
 
 
-def update_employee_details(employee_id, name, department_id, position_id):
+def update_employee_details(employee_id, name, dept_id, position_id, salary):
     conn = connect_db()
     cursor = conn.cursor()
-    cursor.execute("""
+    query = """
         UPDATE Сотрудник
         SET Имя_сотрудника = ?, id_отдела = ?, id_должности = ?
         WHERE id_сотрудника = ?
-    """, (name, department_id, position_id, employee_id))
+    """
+    cursor.execute(query, (name, dept_id, position_id, employee_id))
+
+    # Обновление оклада в таблице Должности
+    salary_query = """
+        UPDATE Должности
+        SET Оклад = ?
+        WHERE id_должности = (SELECT id_должности FROM Сотрудник WHERE id_сотрудника = ?)
+    """
+    cursor.execute(salary_query, (salary, employee_id))
+
     conn.commit()
     conn.close()
-    tk.messagebox.showinfo("Успех", "Информация о сотруднике успешно обновлена.")
 
 
 def view_employee_details(employee_id):
     conn = connect_db()
     cursor = conn.cursor()
+
+    # Обновленный запрос с учетом оклада
     query = """
         SELECT 
             Сотрудник.Имя_сотрудника, 
             Отдел.id_отдела,
             Отдел.Название_отдела, 
             Должности.id_должности,
-            Должности.Должность
+            Должности.Должность,
+            Должности.Оклад  -- Добавляем оклад
         FROM Сотрудник
         LEFT JOIN Отдел ON Сотрудник.id_отдела = Отдел.id_отдела
         LEFT JOIN Должности ON Сотрудник.id_должности = Должности.id_должности
@@ -258,7 +265,7 @@ def view_employee_details(employee_id):
     def open_edit_window():
         edit_window = tk.Toplevel(details_window)
         edit_window.title(f"Изменить данные сотрудника {employee_id}")
-        center_window(edit_window, width=400, height=300)
+        center_window(edit_window, width=400, height=350)  # Увеличиваем размер окна
 
         ttk.Label(edit_window, text="Имя:").grid(row=0, column=0, padx=10, pady=5)
         name_entry = ttk.Entry(edit_window)
@@ -275,16 +282,22 @@ def view_employee_details(employee_id):
         position_entry.grid(row=2, column=1, padx=10, pady=5)
         position_entry.insert(0, employee[3])
 
+        ttk.Label(edit_window, text="Оклад:").grid(row=3, column=0, padx=10, pady=5)
+        salary_entry = ttk.Entry(edit_window)
+        salary_entry.grid(row=3, column=1, padx=10, pady=5)
+        salary_entry.insert(0, employee[5])  # Отображаем оклад
+
         def save_changes():
-            update_employee_details(employee_id, name_entry.get(), dept_entry.get(), position_entry.get())
+            update_employee_details(employee_id, name_entry.get(), dept_entry.get(), position_entry.get(),
+                                    salary_entry.get())
             edit_window.destroy()
             details_window.destroy()
 
-        ttk.Button(edit_window, text="Сохранить", command=save_changes).grid(row=3, column=0, columnspan=2, pady=10)
+        ttk.Button(edit_window, text="Сохранить", command=save_changes).grid(row=4, column=0, columnspan=2, pady=10)
 
     details_window = tk.Toplevel(root)
     details_window.title(f"Детали сотрудника {employee_id}")
-    center_window(details_window, width=500, height=300)
+    center_window(details_window, width=500, height=350)  # Увеличиваем размер окна
 
     frame = ttk.Frame(details_window, padding=20)
     frame.pack(fill="both", expand=True)
@@ -293,7 +306,8 @@ def view_employee_details(employee_id):
         styled_label(frame, f"Имя сотрудника: {employee[0]}", 0, 0)
         styled_label(frame, f"Название отдела: {employee[2]}", 1, 0)
         styled_label(frame, f"Должность: {employee[4]}", 2, 0)
-        ttk.Button(frame, text="Изменить", command=open_edit_window).grid(row=3, column=0, pady=10, sticky="w")
+        styled_label(frame, f"Оклад: {employee[5]:.2f} руб.", 3, 0)  # Добавляем отображение оклада
+        ttk.Button(frame, text="Изменить", command=open_edit_window).grid(row=4, column=0, pady=10, sticky="w")
     else:
         ttk.Label(frame, text="Сотрудник не найден.", font=("Arial", 12, "italic")).grid(row=0, column=0)
 
@@ -490,6 +504,8 @@ tk.Button(root, text="Обновить договор", command=update_contract)
 tk.Button(root, text="Удалить договор", command=delete_contract).pack(pady=10)
 tk.Button(root, text="Отчет по сотруднику", command=generate_employee_report).pack(pady=10)
 tk.Button(root, text="Статистика по договорам", command=show_statistics).pack(pady=10)
+# Кнопка "Статистика по отделам"
+tk.Button(root, text="Статистика по отделам", command=generate_department_report).pack(pady=10)
 
 
 # Функция выборки данных с ФИО сотрудника
