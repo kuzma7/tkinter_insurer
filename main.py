@@ -493,19 +493,22 @@ def show_statistics():
         tk.Label(stats_window, text="Нет данных для отображения графика.", font=("Arial", 12)).pack(pady=20)
 
 
+
 # Основное окно
 root = tk.Tk()
 root.title("Автоматизированная система учета договоров страхования")
 root.geometry("1100x600")  # Увеличим размер окна для удобства
 
+
+button_frame = tk.Frame(root)
+button_frame.pack(pady=10)
 # Кнопки для выполнения операций
-tk.Button(root, text="Добавить договор", command=add_contract).pack(pady=10)
-tk.Button(root, text="Обновить договор", command=update_contract).pack(pady=10)
-tk.Button(root, text="Удалить договор", command=delete_contract).pack(pady=10)
-tk.Button(root, text="Отчет по сотруднику", command=generate_employee_report).pack(pady=10)
-tk.Button(root, text="Статистика по договорам", command=show_statistics).pack(pady=10)
-# Кнопка "Статистика по отделам"
-tk.Button(root, text="Статистика по отделам", command=generate_department_report).pack(pady=10)
+tk.Button(button_frame, text="Добавить договор", command=add_contract).pack(side=tk.LEFT, padx=5)
+tk.Button(button_frame, text="Обновить договор", command=update_contract).pack(side=tk.LEFT, padx=5)
+tk.Button(button_frame, text="Удалить договор", command=delete_contract).pack(side=tk.LEFT, padx=5)
+tk.Button(button_frame, text="Отчет по сотруднику", command=generate_employee_report).pack(side=tk.LEFT, padx=5)
+tk.Button(button_frame, text="Статистика по договорам", command=show_statistics).pack(side=tk.LEFT, padx=5)
+tk.Button(button_frame, text="Статистика по отделам", command=generate_department_report).pack(side=tk.LEFT, padx=5)
 
 
 # Функция выборки данных с ФИО сотрудника
